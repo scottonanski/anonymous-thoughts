@@ -1,0 +1,5 @@
+{
+  "name": "Us - Share Your Thoughts",
+  "description": "A simple, anonymous platform to share thoughts and reply to others. Express yourself freely, upvote or downvote replies, and see what the community is thinking. All content is ephemeral and client-side.",
+  "requestFramePermissions": []
+}
