@@ -1,3 +1,4 @@
+// components/ThemeSwitcher.tsx
 import { useEffect } from 'react';
 import { Sun, Moon } from 'lucide-react';
 import { themeChange } from 'theme-change';

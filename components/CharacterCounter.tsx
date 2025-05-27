@@ -1,3 +1,4 @@
+// components/CharacterCounter.tsx
 
 import React from 'react';
 import { MAX_CHARS } from '../constants';

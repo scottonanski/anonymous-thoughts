@@ -1,3 +1,4 @@
+// components/ThoughtItem.tsx
 
 import React, { useState } from 'react';
 import { MessageSquareReply, ArrowUp, ArrowDown } from 'lucide-react';

@@ -1,4 +1,4 @@
-
+// components/ThoughtInput.tsx
 import React, { useState } from 'react';
 import CharacterCounter from './CharacterCounter';
 import { MAX_CHARS } from '../constants';

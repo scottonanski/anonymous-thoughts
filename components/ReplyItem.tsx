@@ -1,3 +1,5 @@
+// components/ReplyItem.tsx
+
 import React from 'react';
 import type { Reply, VoteType } from '../types';
 import { ArrowUp, ArrowDown } from 'lucide-react';

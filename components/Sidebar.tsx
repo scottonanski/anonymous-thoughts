@@ -1,3 +1,5 @@
+// components/Sidebar.tsx
+
 import React from 'react';
 import type { KeyboardEvent } from 'react';
 import {Brain} from 'lucide-react';
