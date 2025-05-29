@@ -1,17 +1,20 @@
-// components/ThoughtInput.tsx
+// src/components/ThoughtInput.tsx
 import React, { useState } from 'react';
-import CharacterCounter from './CharacterCounter';
-import { MAX_CHARS } from '../constants';
+import CharacterCounter from './CharacterCounter'; // Assuming CharacterCounter is in the same directory
+import { MAX_CHARS } from '../constants'; // Assuming constants.ts is in ../
 
 interface ThoughtInputProps {
   onAddThought: (text: string) => void;
+  disabled?: boolean; // Prop to disable input and button
 }
 
-const ThoughtInput: React.FC<ThoughtInputProps> = ({ onAddThought }) => {
+const ThoughtInput: React.FC<ThoughtInputProps> = ({ onAddThought, disabled }) => {
   const [text, setText] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (disabled) return; // Don't submit if disabled
+
     if (text.trim() && text.length <= MAX_CHARS) {
       onAddThought(text.trim());
       setText('');
@@ -27,12 +30,14 @@ const ThoughtInput: React.FC<ThoughtInputProps> = ({ onAddThought }) => {
         placeholder="What's on your mind? (Keep it under 300 characters)"
         className="w-full p-3 border border-base-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-shadow duration-150 resize-none bg-base-200/30"
         rows={4}
+        disabled={disabled} // <<< Apply disabled prop here
       />
       <div className="flex justify-between items-center mt-3">
         <CharacterCounter currentLength={text.length} />
         <button
           type="submit"
-          disabled={!text.trim() || text.length > MAX_CHARS}
+          // Disable button if explicitly disabled OR if text validation fails
+          disabled={disabled || !text.trim() || text.length > MAX_CHARS} // <<< Apply disabled prop here
           className="px-6 py-2 bg-primary text-primary-content font-medium rounded-lg hover:bg-primary-focus focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
         >
           Post

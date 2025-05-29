@@ -1,20 +1,16 @@
 {
-    "compilerOptions": {
-      "target": "ES2020",
-      "module": "NodeNext",
-      "moduleResolution": "nodenext", // Or "node16" / "nodenext" if preferred, "bundler" is good for modern TS/ESM
-      "outDir": "./dist",        // Output directory for compiled JS (though tsx runs TS directly)
-      "rootDir": "./src",
-      "strict": true,
-      "esModuleInterop": true,
-      "skipLibCheck": true,
-      "forceConsistentCasingInFileNames": true,
-      "resolveJsonModule": true,
-      "baseUrl": ".",
-      "paths": {
-        "@/*": ["src/*"]
-      }
-    },
-    "include": ["src/**/*"],
-    "exclude": ["node_modules", "dist"]
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node", // ✅ FIXED: Use 'node' to work with tsc
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true, // ✅ Now valid with 'node'
+    "allowSyntheticDefaultImports": true,
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
 }

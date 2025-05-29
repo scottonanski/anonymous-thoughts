@@ -8,28 +8,26 @@ import {
   addReplyHandler,
   voteOnThoughtHandler,
   voteOnReplyHandler,
-} from '../controllers/thoughtsController.js'; // Ensure this path is correct
+} from '../controllers/thoughtsController.js'; // note .js extension for ESM import
 
 const router = Router();
 
-// --- Thoughts ---
-// GET /api/thoughts - Get all thoughts
+// GET /api/thoughts - get all thoughts
 router.get('/', getAllThoughtsHandler);
 
-// POST /api/thoughts - Create a new thought
+// POST /api/thoughts - create new thought
 router.post('/', createThoughtHandler);
 
-// GET /api/thoughts/:thoughtId - Get a single thought by ID
+// GET /api/thoughts/:thoughtId - get thought by id
 router.get('/:thoughtId', getThoughtByIdHandler);
 
-// POST /api/thoughts/:thoughtId/vote - Vote on a thought
+// POST /api/thoughts/:thoughtId/vote - vote on a thought
 router.post('/:thoughtId/vote', voteOnThoughtHandler);
 
-// --- Replies (scoped under a thought) ---
-// POST /api/thoughts/:thoughtId/replies - Add a reply to a thought
+// POST /api/thoughts/:thoughtId/replies - add reply to thought
 router.post('/:thoughtId/replies', addReplyHandler);
 
-// POST /api/thoughts/:thoughtId/replies/:replyId/vote - Vote on a reply
+// POST /api/thoughts/:thoughtId/replies/:replyId/vote - vote on a reply
 router.post('/:thoughtId/replies/:replyId/vote', voteOnReplyHandler);
 
 export default router;
