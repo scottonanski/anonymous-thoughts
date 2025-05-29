@@ -9,6 +9,7 @@ import {
   voteOnThoughtHandler,
   voteOnReplyHandler,
 } from '../controllers/thoughtsController.js'; // note .js extension for ESM import
+import { _clearAllThoughts_TEST_ONLY } from '../services/thoughtService.js'; // <<< --- THIS LINE IS NEW
 
 const router = Router();
 
@@ -29,5 +30,15 @@ router.post('/:thoughtId/replies', addReplyHandler);
 
 // POST /api/thoughts/:thoughtId/replies/:replyId/vote - vote on a reply
 router.post('/:thoughtId/replies/:replyId/vote', voteOnReplyHandler);
+
+// DANGER: Test route to clear all data from KV  <<< --- THIS WHOLE BLOCK IS NEW
+router.delete('/_clearall', async (_req, res, next) => {
+  try {
+    await _clearAllThoughts_TEST_ONLY();
+    res.status(200).json({ status: 'success', message: 'All thoughts data cleared from KV.' });
+  } catch (error) {
+    next(error);
+  }
+});
 
 export default router;
