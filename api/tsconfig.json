@@ -1,8 +1,8 @@
 {
     "compilerOptions": {
       "target": "ES2020",
-      "module": "ESNext",
-      "moduleResolution": "bundler", // Or "node16" / "nodenext" if preferred, "bundler" is good for modern TS/ESM
+      "module": "NodeNext",
+      "moduleResolution": "nodenext", // Or "node16" / "nodenext" if preferred, "bundler" is good for modern TS/ESM
       "outDir": "./dist",        // Output directory for compiled JS (though tsx runs TS directly)
       "rootDir": "./src",
       "strict": true,

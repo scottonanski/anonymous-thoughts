@@ -1,60 +1,63 @@
 // api/src/controllers/thoughtsController.ts
 
-import { Request, Response, NextFunction } from 'express';
-import * as thoughtsService from '../services/thoughtService';
-import type { CreateThoughtInput, Thought } from '../types'; // Assuming Thought type might be useful for response typing
+import type { Request, Response, NextFunction } from 'express';
+import * as thoughtService from '../services/thoughtService.js'; // Ensure this matches your service filename
+import type {
+  CreateThoughtInput,
+  CreateReplyInput,
+  Thought,
+  Reply,
+  VoteInput, // For request body when voting
+} from '../types.js';
+
+// Define a type for our standard success response structure
+interface SuccessResponse<T> {
+  status: 'success';
+  data: T;
+  results?: number; // Optional, for lists
+}
 
 /**
  * Handles GET /api/thoughts
- * Retrieves all thoughts.
  */
 export const getAllThoughtsHandler = async (
-  _req: Request, // No request data needed
+  _req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const allThoughts = await thoughtsService.getAllThoughts();
-    res.status(200).json({
+    const allThoughts: Thought[] = await thoughtService.getAllThoughts();
+    const response: SuccessResponse<{ thoughts: Thought[] }> = {
       status: 'success',
       results: allThoughts.length,
       data: {
         thoughts: allThoughts,
       },
-    });
+    };
+    res.status(200).json(response);
   } catch (error) {
-    next(error); // Pass error to the global error handler
+    next(error);
   }
 };
 
 /**
  * Handles POST /api/thoughts
- * Creates a new thought.
  */
 export const createThoughtHandler = async (
-  req: Request<{}, {}, CreateThoughtInput>, // ReqBody is CreateThoughtInput
+  req: Request<unknown, unknown, CreateThoughtInput>,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
     const { text } = req.body;
-
-    // Basic validation (service layer will do more thorough validation)
-    if (!text || typeof text !== 'string' || text.trim().length === 0) {
-      // For now, let the service throw the more specific error.
-      // Or, you could throw a specific error here:
-      // throw new Error('Thought text is required and cannot be empty.');
-      // This will be caught by the service layer's validation anyway.
-    }
-
-    const newThought = await thoughtsService.createThought({ text });
-
-    res.status(201).json({
+    const newThought: Thought = await thoughtService.createThought({ text });
+    const response: SuccessResponse<{ thought: Thought }> = {
       status: 'success',
       data: {
         thought: newThought,
       },
-    });
+    };
+    res.status(201).json(response);
   } catch (error) {
     next(error);
   }
@@ -62,41 +65,152 @@ export const createThoughtHandler = async (
 
 /**
  * Handles GET /api/thoughts/:thoughtId
- * Retrieves a single thought by its ID.
  */
 export const getThoughtByIdHandler = async (
-  req: Request<{ thoughtId: string }>, // ParamsDictionary
+  req: Request<{ thoughtId: string }, unknown, unknown>,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
     const { thoughtId } = req.params;
-    const thought = await thoughtsService.getThoughtById(thoughtId);
+    const thought: Thought | undefined = await thoughtService.getThoughtById(thoughtId);
 
     if (!thought) {
-      // If thought is not found by the service, send a 404
-      // We can create a custom error type later for this (e.g., NotFoundError)
-      // For now, a simple message is fine, or we let the global error handler deal with a generic error if service threw.
-      // However, service returns undefined for not found, so controller handles the 404.
       res.status(404).json({
         status: 'fail',
         message: `Thought with ID ${thoughtId} not found.`,
       });
-      return; // Important to return to prevent further execution
+      return;
     }
-
-    res.status(200).json({
+    const response: SuccessResponse<{ thought: Thought }> = {
       status: 'success',
       data: {
         thought,
       },
-    });
+    };
+    res.status(200).json(response);
   } catch (error) {
     next(error);
   }
 };
 
-// --- (Placeholders for other handlers we'll add for replies and votes) ---
-// export const addReplyHandler = async (...) => { ... };
-// export const voteOnThoughtHandler = async (...) => { ... };
-// export const voteOnReplyHandler = async (...) => { ... };
+/**
+ * Handles POST /api/thoughts/:thoughtId/replies
+ */
+export const addReplyHandler = async (
+  req: Request<{ thoughtId: string }, unknown, CreateReplyInput>,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { thoughtId } = req.params;
+    const { text } = req.body;
+    const newReply = await thoughtService.addReply(thoughtId, { text });
+
+    if (!newReply) {
+      res.status(404).json({
+        status: 'fail',
+        message: `Thought with ID ${thoughtId} not found, cannot add reply.`,
+      });
+      return;
+    }
+    const response: SuccessResponse<{ reply: Reply }> = {
+      status: 'success',
+      data: {
+        reply: newReply,
+      },
+    };
+    res.status(201).json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Handles POST /api/thoughts/:thoughtId/vote
+ */
+export const voteOnThoughtHandler = async (
+  req: Request<{ thoughtId: string }, unknown, VoteInput>,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { thoughtId } = req.params;
+    const { voteType } = req.body;
+
+    if (!voteType || (voteType !== 'up' && voteType !== 'down')) {
+      res.status(400).json({
+        status: 'fail',
+        message: "Invalid voteType. Must be 'up' or 'down'.",
+      });
+      return;
+    }
+
+    const updatedThought = await thoughtService.voteOnThought(thoughtId, voteType);
+
+    if (!updatedThought) {
+      // Thought either not found or was deleted due to votes
+      res.status(404).json({
+        status: 'fail',
+        message: `Thought with ID ${thoughtId} not found or was deleted.`,
+      });
+      return;
+    }
+    const response: SuccessResponse<{ thought: Thought }> = {
+      status: 'success',
+      data: {
+        thought: updatedThought,
+      },
+    };
+    res.status(200).json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Handles POST /api/thoughts/:thoughtId/replies/:replyId/vote
+ */
+export const voteOnReplyHandler = async (
+  // For req.params, it's good to be explicit: { thoughtId: string; replyId: string }
+  req: Request<{ thoughtId: string; replyId: string }, unknown, VoteInput>,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { thoughtId, replyId } = req.params;
+    const { voteType } = req.body;
+
+    if (!voteType || (voteType !== 'up' && voteType !== 'down')) {
+      res.status(400).json({
+        status: 'fail',
+        message: "Invalid voteType. Must be 'up' or 'down'.",
+      });
+      return;
+    }
+
+    const updatedReply = await thoughtService.voteOnReply(
+      thoughtId,
+      replyId,
+      voteType
+    );
+
+    if (!updatedReply) {
+      // Reply either not found or was deleted due to votes
+      res.status(404).json({
+        status: 'fail',
+        message: `Reply with ID ${replyId} (on thought ${thoughtId}) not found or was deleted.`,
+      });
+      return;
+    }
+    const response: SuccessResponse<{ reply: Reply }> = {
+      status: 'success',
+      data: {
+        reply: updatedReply,
+      },
+    };
+    res.status(200).json(response);
+  } catch (error) {
+    next(error);
+  }
+};

@@ -2,28 +2,56 @@
 
 import express, { type Request, type Response, type NextFunction, type Application } from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv'; // For local development environment variables
+import dotenv from 'dotenv';
 
-import thoughtRoutes from './routes/thoughtRoutes';
+// Ensure all local module imports end with .js
+import thoughtRoutes from './routes/thoughtRoutes.js';
 
-// Load environment variables from .env file for local development
-// Vercel handles environment variables in deployment
+// Load environment variables from .env file for local development via `vercel dev`
+// Vercel handles environment variables in its own deployment environment.
 if (process.env.NODE_ENV !== 'production') {
-  dotenv.config();
+  dotenv.config(); // Looks for .env in the current directory (api/) or project root if run by vercel dev
 }
 
 const app: Application = express();
-const PORT = process.env.PORT || 3001; // Default to 3001 if no PORT env var
 
 // --- Core Middleware ---
 app.use(
   cors({
-    origin: process.env.NODE_ENV === 'development'
-      ? ['http://localhost:5173', `http://localhost:${PORT}`] // Allow Vite dev server and this API itself for testing
-      : process.env.VERCEL_URL // In production, Vercel sets VERCEL_URL
-        ? [`https://${process.env.VERCEL_URL}`, process.env.NEXT_PUBLIC_APP_URL || ''] // Allow Vercel deployment URL and custom domain if configured
-        : undefined, // Fallback or further configuration might be needed for complex setups
-    credentials: true, // If you plan to use cookies or sessions
+    origin: (origin, callback) => {
+      const allowedOrigins: string[] = []; // Explicitly type as string array
+
+      // When using `vercel dev`, process.env.NODE_ENV is 'development'
+      // `vercel dev` typically serves frontend on http://localhost:3000
+      // Your Vite dev server might be on http://localhost:5173
+      if (process.env.NODE_ENV === 'development') {
+        allowedOrigins.push('http://localhost:5173'); 
+        allowedOrigins.push('http://localhost:3000'); 
+        // If your API runs on a different port locally (e.g. 3001 via direct npm run dev in api/)
+        // you might add that too, e.g., `http://localhost:${process.env.PORT || 3001}`
+      } else {
+        // Production origins
+        if (process.env.VERCEL_URL) { // Provided by Vercel
+          allowedOrigins.push(`https://${process.env.VERCEL_URL}`);
+        }
+        // Example: if your frontend is deployed to a custom domain, set via Vercel env var
+        if (process.env.FRONTEND_URL) { 
+          allowedOrigins.push(process.env.FRONTEND_URL);
+        }
+      }
+
+      // Allow requests with no origin (like mobile apps, curl, server-to-server)
+      // OR if origin is in the allowedOrigins list.
+      // If allowedOrigins is empty (e.g. no prod URLs configured yet), this might block valid prod requests.
+      // Consider a more robust production origin check or a default allow if needed.
+      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn(`CORS: Origin '${origin}' was not allowed.`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
   })
 );
 
@@ -37,11 +65,9 @@ app.get('/api/health', (_req: Request, res: Response) => {
 
 // --- API Routes ---
 app.use('/api/thoughts', thoughtRoutes);
-// Add other resource routers here in the future, e.g.:
-// app.use('/api/users', userRoutes);
 
 // --- API 404 Not Found Handler ---
-// This handles any requests to /api/* that haven't been matched by a route
+// This handles any requests to /api/* that haven't been matched by a defined route
 app.use('/api/*', (req: Request, res: Response) => {
   res.status(404).json({
     status: 'fail',
@@ -51,39 +77,47 @@ app.use('/api/*', (req: Request, res: Response) => {
 
 // --- Global Error Handling Middleware ---
 // This MUST be the last piece of middleware.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  const statusCode = err.statusCode || 500;
-  const status = err.status || (statusCode >= 500 ? 'error' : 'fail');
-  const message = err.message || 'Something went wrong on the server.';
 
-  console.error('💥 GLOBAL ERROR HANDLER:', err.name, '-', message, err.stack ? `\nSTACK: ${err.stack}` : '');
+// Define an interface for errors that might have statusCode and status
+interface AppError extends Error {
+  statusCode?: number;
+  status?: string; // 'fail' or 'error'
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: Error | AppError, _req: Request, res: Response, _next: NextFunction) => {
+  // Default error values
+  let statusCode = 500;
+  let apiStatus: 'fail' | 'error' = 'error'; // Ensure this is one of the allowed literal types
+  const message = err.message || 'An unexpected internal server error occurred.';
+  const errName = err.name || 'Error'; // Standard Error property
+  const errStack = err.stack;       // Standard Error property
+
+  // Check if the error object has our custom properties and if they are valid types
+  if ('statusCode' in err && typeof err.statusCode === 'number') {
+    statusCode = err.statusCode;
+  }
+
+  if ('status' in err && (err.status === 'fail' || err.status === 'error')) {
+    apiStatus = err.status;
+  } else {
+    // If no specific 'status' property on the error, derive it from statusCode
+    apiStatus = statusCode >= 500 ? 'error' : 'fail';
+  }
+  
+  console.error('💥 GLOBAL ERROR HANDLER:', errName, '-', message, errStack ? `\nSTACK: ${errStack}` : '');
 
   // Send a structured error response
   res.status(statusCode).json({
-    status,
+    status: apiStatus,
     message,
-    // Optionally, include stack trace or more error details in development
+    // Optionally, include more error details (like stack and original error name) in development
     ...(process.env.NODE_ENV === 'development' && {
-      error: { name: err.name, stack: err.stack },
+      error: { name: errName, stack: errStack },
     }),
   });
 });
 
-
-// --- Conditional Server Start for Local Development (not for Vercel) ---
-// Vercel handles starting the server for the exported app in serverless functions.
-// This block allows `npm run dev` in the `api` directory to work for local testing
-// without relying on `vercel dev` CLI.
-if (process.env.NODE_ENV !== 'production' && require.main === module) {
-  // The `require.main === module` check ensures this only runs when the file is executed directly
-  // (e.g., `node src/index.js` or `tsx src/index.ts`), not when imported by Vercel.
-  app.listen(PORT, () => {
-    console.log(`🌲 API server listening locally on http://localhost:${PORT}`);
-    console.log(`   Health check: http://localhost:${PORT}/api/health`);
-    console.log(`   Thoughts API: http://localhost:${PORT}/api/thoughts`);
-  });
-}
-
-// --- Export the Express App for Vercel ---
+// Vercel uses the default export to run the serverless function.
+// No app.listen() is needed here when deploying to Vercel or using `vercel dev`.
 export default app;
