@@ -146,28 +146,41 @@ export const voteOnThoughtHandler = async (
       return;
     }
 
-    const updatedThought = await thoughtService.voteOnThought(thoughtId, voteType);
+    const resultThoughtObject = await thoughtService.voteOnThought(thoughtId, voteType);
 
-    if (!updatedThought) {
-      // Thought either not found or was deleted due to votes
-      res.status(404).json({
-        status: 'fail',
-        message: `Thought with ID ${thoughtId} not found or was deleted.`,
-      });
-      return;
+    // resultThoughtObject will be:
+    // - The updated thought object if the vote was successful and thought still exists.
+    // - undefined if the thought was deleted due to vote threshold.
+    // - undefined if the thought was not found initially.
+
+    if (resultThoughtObject === undefined) {
+      // This case covers:
+      // 1. Thought successfully deleted by votes.
+      // 2. Thought not found initially.
+      // The thoughtService logs which case it was.
+      // For the client, a successful response indicating the thought is now 'null' (gone) is appropriate.
+      // The frontend's App.tsx handleVoteOnThought logic already handles removing the thought from display.
+      const response: SuccessResponse<{ thought: null }> = {
+        status: 'success',
+        data: {
+          thought: null, // Signal to client that the thought is gone or couldn't be processed
+        },
+      };
+      res.status(200).json(response); // Send 200 OK with null thought data
+    } else {
+      // Thought was successfully voted on and still exists
+      const response: SuccessResponse<{ thought: Thought }> = {
+        status: 'success',
+        data: {
+          thought: resultThoughtObject,
+        },
+      };
+      res.status(200).json(response);
     }
-    const response: SuccessResponse<{ thought: Thought }> = {
-      status: 'success',
-      data: {
-        thought: updatedThought,
-      },
-    };
-    res.status(200).json(response);
   } catch (error) {
     next(error);
   }
 };
-
 /**
  * Handles POST /api/thoughts/:thoughtId/replies/:replyId/vote
  */
