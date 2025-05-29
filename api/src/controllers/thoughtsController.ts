@@ -172,7 +172,6 @@ export const voteOnThoughtHandler = async (
  * Handles POST /api/thoughts/:thoughtId/replies/:replyId/vote
  */
 export const voteOnReplyHandler = async (
-  // For req.params, it's good to be explicit: { thoughtId: string; replyId: string }
   req: Request<{ thoughtId: string; replyId: string }, unknown, VoteInput>,
   res: Response,
   next: NextFunction
@@ -189,27 +188,29 @@ export const voteOnReplyHandler = async (
       return;
     }
 
-    const updatedReply = await thoughtService.voteOnReply(
+    const resultReplyObject = await thoughtService.voteOnReply(
       thoughtId,
       replyId,
       voteType
     );
 
-    if (!updatedReply) {
-      // Reply either not found or was deleted due to votes
-      res.status(404).json({
-        status: 'fail',
-        message: `Reply with ID ${replyId} (on thought ${thoughtId}) not found or was deleted.`,
-      });
-      return;
+    if (resultReplyObject === undefined) {
+      const response: SuccessResponse<{ reply: null }> = {
+        status: 'success',
+        data: {
+          reply: null, 
+        },
+      };
+      res.status(200).json(response); 
+    } else {
+      const response: SuccessResponse<{ reply: Reply }> = {
+        status: 'success',
+        data: {
+          reply: resultReplyObject,
+        },
+      };
+      res.status(200).json(response);
     }
-    const response: SuccessResponse<{ reply: Reply }> = {
-      status: 'success',
-      data: {
-        reply: updatedReply,
-      },
-    };
-    res.status(200).json(response);
   } catch (error) {
     next(error);
   }
