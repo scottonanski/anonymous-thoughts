@@ -1,27 +1,51 @@
 // api/src/services/thoughtService.ts
 
 import { v4 as uuidv4 } from 'uuid';
+import { kv } from '@vercel/kv'; // Import the Vercel KV client
 import type {
   Thought,
   Reply,
   CreateThoughtInput,
   CreateReplyInput,
   VoteType,
-} from '../types.js'; // Ensure .js extension is here if you had it previously
+} from '../types.js';
 
 // --- Constants ---
 const MAX_TEXT_LENGTH = 300;
 const DELETION_THRESHOLD_DOWNVOTES = 10;
+const THOUGHTS_LIST_KEY = 'thoughts_list'; // A key to store an array of thought IDs
+const THOUGHT_KEY_PREFIX = 'thought:'; // Prefix for storing individual thought objects
 
-// --- In-Memory Data Store ---
-let thoughts: Thought[] = [];
-console.log('!!! thoughtsService.ts module INITIALIZED. Thoughts array initial length:', thoughts.length); // Log module initialization
+console.log('!!! thoughtsService.ts (Vercel KV version) module INITIALIZED.');
 
-// --- Helper Functions ---
+// --- Helper Functions for KV Store ---
+
+// Reads all thought objects by fetching their IDs first, then each object
+const getAllThoughtObjects = async (): Promise<Thought[]> => {
+  const thoughtIds = await kv.smembers(THOUGHTS_LIST_KEY);
+  if (!thoughtIds || thoughtIds.length === 0) {
+    return [];
+  }
+  const thoughts: Thought[] = [];
+  for (const id of thoughtIds) {
+    const thought = await kv.get<Thought>(`${THOUGHT_KEY_PREFIX}${id}`);
+    if (thought) {
+      thoughts.push(thought);
+    } else {
+      // Thought ID was in list but object not found (data integrity issue?)
+      // Optionally, clean up this ID from THOUGHTS_LIST_KEY
+      console.warn(`Thought object for ID ${id} not found in KV, but was in list.`);
+      await kv.srem(THOUGHTS_LIST_KEY, id);
+    }
+  }
+  return thoughts;
+};
+
+// --- Sorting Helper Functions ---
 const sortThoughts = (thoughtsToSort: Thought[]): Thought[] => {
   return [...thoughtsToSort].sort((a, b) => {
-    const netVotesA = a.upvotes - a.downvotes;
-    const netVotesB = b.upvotes - b.downvotes;
+    const netVotesA = (a.upvotes || 0) - (a.downvotes || 0);
+    const netVotesB = (b.upvotes || 0) - (b.downvotes || 0);
     if (netVotesB !== netVotesA) {
       return netVotesB - netVotesA;
     }
@@ -31,8 +55,8 @@ const sortThoughts = (thoughtsToSort: Thought[]): Thought[] => {
 
 const sortReplies = (repliesToSort: Reply[]): Reply[] => {
   return [...repliesToSort].sort((a, b) => {
-    const netVotesA = a.upvotes - a.downvotes;
-    const netVotesB = b.upvotes - b.downvotes;
+    const netVotesA = (a.upvotes || 0) - (a.downvotes || 0);
+    const netVotesB = (b.upvotes || 0) - (b.downvotes || 0);
     if (netVotesB !== netVotesA) {
       return netVotesB - netVotesA;
     }
@@ -40,19 +64,19 @@ const sortReplies = (repliesToSort: Reply[]): Reply[] => {
   });
 };
 
-// --- Service Functions ---
+// --- Service Functions (Modified for Vercel KV) ---
 
 export const getAllThoughts = async (): Promise<Thought[]> => {
-  console.log('--- getAllThoughts called. Current thoughts count:', thoughts.length, JSON.stringify(thoughts.map(t => t.id)));
+  const thoughts = await getAllThoughtObjects();
+  console.log(`--- getAllThoughts: Read ${thoughts.length} thoughts from KV.`);
   const thoughtsWithSortedReplies = thoughts.map(thought => ({
     ...thought,
-    replies: sortReplies(thought.replies),
+    replies: sortReplies(thought.replies || []),
   }));
-  return Promise.resolve(sortThoughts(thoughtsWithSortedReplies));
+  return sortThoughts(thoughtsWithSortedReplies);
 };
 
 export const createThought = async (input: CreateThoughtInput): Promise<Thought> => {
-  console.log('--- createThought called. Thoughts BEFORE push:', thoughts.length, JSON.stringify(thoughts.map(t => t.id)));
   const { text } = input;
   if (!text || text.trim().length === 0) {
     throw new Error('Thought text cannot be empty.');
@@ -60,6 +84,7 @@ export const createThought = async (input: CreateThoughtInput): Promise<Thought>
   if (text.length > MAX_TEXT_LENGTH) {
     throw new Error(`Thought text cannot exceed ${MAX_TEXT_LENGTH} characters.`);
   }
+  
   const newThought: Thought = {
     id: uuidv4(),
     text: text.trim(),
@@ -68,30 +93,33 @@ export const createThought = async (input: CreateThoughtInput): Promise<Thought>
     createdAt: new Date().toISOString(),
     replies: [],
   };
-  thoughts.push(newThought);
-  console.log('--- createThought finished. Thoughts AFTER push:', thoughts.length, JSON.stringify(thoughts.map(t => t.id)));
-  return Promise.resolve(newThought);
+  
+  // Store the thought object
+  await kv.set(`${THOUGHT_KEY_PREFIX}${newThought.id}`, newThought);
+  // Add its ID to the list of all thought IDs
+  await kv.sadd(THOUGHTS_LIST_KEY, newThought.id);
+
+  console.log(`--- createThought: Created thought ${newThought.id} and saved to KV.`);
+  return newThought;
 };
 
 export const getThoughtById = async (thoughtId: string): Promise<Thought | undefined> => {
-  console.log(`--- getThoughtById called for ${thoughtId}. Current thoughts count:`, thoughts.length, JSON.stringify(thoughts.map(t => t.id)));
-  const thought = thoughts.find((t) => t.id === thoughtId);
+  const thought = await kv.get<Thought>(`${THOUGHT_KEY_PREFIX}${thoughtId}`);
   if (!thought) {
-    console.log(`--- getThoughtById: Thought ${thoughtId} NOT FOUND.`);
-    return Promise.resolve(undefined);
+    console.log(`--- getThoughtById: Thought ${thoughtId} NOT FOUND in KV.`);
+    return undefined;
   }
-  console.log(`--- getThoughtById: Thought ${thoughtId} FOUND.`);
-  return Promise.resolve({
+  console.log(`--- getThoughtById: Thought ${thoughtId} FOUND in KV.`);
+  return {
     ...thought,
-    replies: sortReplies(thought.replies),
-  });
+    replies: sortReplies(thought.replies || []),
+  };
 };
 
 export const addReply = async (
   thoughtId: string,
   input: CreateReplyInput
 ): Promise<Reply | undefined> => {
-  console.log(`--- addReply called for thought ${thoughtId}. Current thoughts count:`, thoughts.length);
   const { text } = input;
   if (!text || text.trim().length === 0) {
     throw new Error('Reply text cannot be empty.');
@@ -100,10 +128,10 @@ export const addReply = async (
     throw new Error(`Reply text cannot exceed ${MAX_TEXT_LENGTH} characters.`);
   }
 
-  const thought = thoughts.find((t) => t.id === thoughtId);
+  const thought = await kv.get<Thought>(`${THOUGHT_KEY_PREFIX}${thoughtId}`);
   if (!thought) {
-    console.log(`--- addReply: Parent thought ${thoughtId} NOT FOUND.`);
-    return Promise.resolve(undefined); // Thought not found
+    console.log(`--- addReply: Parent thought ${thoughtId} NOT FOUND in KV.`);
+    return undefined;
   }
 
   const newReply: Reply = {
@@ -113,36 +141,41 @@ export const addReply = async (
     downvotes: 0,
     createdAt: new Date().toISOString(),
   };
-  thought.replies.push(newReply);
-  console.log(`--- addReply: Reply ${newReply.id} added to thought ${thoughtId}. Thought now has ${thought.replies.length} replies.`);
-  return Promise.resolve(newReply);
+
+  thought.replies = [...(thought.replies || []), newReply]; // Add to replies array
+  
+  await kv.set(`${THOUGHT_KEY_PREFIX}${thoughtId}`, thought); // Save the updated thought object
+  console.log(`--- addReply: Reply ${newReply.id} added to thought ${thoughtId}. Updated thought in KV.`);
+  return newReply;
 };
 
 export const voteOnThought = async (
   thoughtId: string,
   voteType: VoteType
 ): Promise<Thought | undefined> => {
-  console.log(`--- voteOnThought called for ${thoughtId}, type: ${voteType}. Current thoughts count:`, thoughts.length);
-  const thoughtIndex = thoughts.findIndex((t) => t.id === thoughtId);
-  if (thoughtIndex === -1) {
-    console.log(`--- voteOnThought: Thought ${thoughtId} NOT FOUND.`);
-    return Promise.resolve(undefined); // Thought not found
+  const thought = await kv.get<Thought>(`${THOUGHT_KEY_PREFIX}${thoughtId}`);
+  if (!thought) {
+    console.log(`--- voteOnThought: Thought ${thoughtId} NOT FOUND in KV.`);
+    return undefined;
   }
 
-  const thoughtToUpdate = thoughts[thoughtIndex];
   if (voteType === 'up') {
-    thoughtToUpdate.upvotes += 1;
+    thought.upvotes = (thought.upvotes || 0) + 1;
   } else if (voteType === 'down') {
-    thoughtToUpdate.downvotes += 1;
+    thought.downvotes = (thought.downvotes || 0) + 1;
   }
-  console.log(`--- voteOnThought: Thought ${thoughtId} votes updated: U${thoughtToUpdate.upvotes}/D${thoughtToUpdate.downvotes}`);
+  console.log(`--- voteOnThought: Thought ${thoughtId} votes updated: U${thought.upvotes}/D${thought.downvotes}`);
 
-  if (thoughtToUpdate.downvotes >= DELETION_THRESHOLD_DOWNVOTES) {
-    thoughts.splice(thoughtIndex, 1); // Remove thought
-    console.log(`--- voteOnThought: Thought ${thoughtId} DELETED due to downvotes. Thoughts remaining:`, thoughts.length);
-    return Promise.resolve(undefined); // Thought was deleted
+  if (thought.downvotes >= DELETION_THRESHOLD_DOWNVOTES) {
+    await kv.del(`${THOUGHT_KEY_PREFIX}${thoughtId}`); // Delete the thought object
+    await kv.srem(THOUGHTS_LIST_KEY, thoughtId);    // Remove its ID from the list
+    console.log(`--- voteOnThought: Thought ${thoughtId} DELETED from KV due to downvotes.`);
+    return undefined; 
+  } else {
+    await kv.set(`${THOUGHT_KEY_PREFIX}${thoughtId}`, thought); // Save updated thought
+    console.log(`--- voteOnThought: Updated thought ${thoughtId} in KV.`);
+    return thought;
   }
-  return Promise.resolve(thoughtToUpdate);
 };
 
 export const voteOnReply = async (
@@ -150,37 +183,54 @@ export const voteOnReply = async (
   replyId: string,
   voteType: VoteType
 ): Promise<Reply | undefined> => {
-  console.log(`--- voteOnReply called for thought ${thoughtId}, reply ${replyId}, type: ${voteType}.`);
-  const thought = thoughts.find((t) => t.id === thoughtId);
-  if (!thought) {
-    console.log(`--- voteOnReply: Parent thought ${thoughtId} NOT FOUND.`);
-    return Promise.resolve(undefined); // Thought not found
+  const thought = await kv.get<Thought>(`${THOUGHT_KEY_PREFIX}${thoughtId}`);
+  if (!thought || !thought.replies) {
+    console.log(`--- voteOnReply: Parent thought ${thoughtId} or its replies NOT FOUND in KV.`);
+    return undefined;
   }
-
+  
   const replyIndex = thought.replies.findIndex((r: Reply) => r.id === replyId);
   if (replyIndex === -1) {
-    console.log(`--- voteOnReply: Reply ${replyId} on thought ${thoughtId} NOT FOUND.`);
-    return Promise.resolve(undefined); // Reply not found
+    console.log(`--- voteOnReply: Reply ${replyId} on thought ${thoughtId} NOT FOUND in KV thought object.`);
+    return undefined;
   }
 
-  const replyToUpdate = thought.replies[replyIndex];
+  const replyToUpdate = { ...thought.replies[replyIndex] }; // Create a copy
+
   if (voteType === 'up') {
-    replyToUpdate.upvotes += 1;
+    replyToUpdate.upvotes = (replyToUpdate.upvotes || 0) + 1;
   } else if (voteType === 'down') {
-    replyToUpdate.downvotes += 1;
+    replyToUpdate.downvotes = (replyToUpdate.downvotes || 0) + 1;
   }
   console.log(`--- voteOnReply: Reply ${replyId} votes updated: U${replyToUpdate.upvotes}/D${replyToUpdate.downvotes}`);
+  
+  thought.replies[replyIndex] = replyToUpdate; // Update the reply in the thought's replies array
 
   if (replyToUpdate.downvotes >= DELETION_THRESHOLD_DOWNVOTES) {
-    thought.replies.splice(replyIndex, 1); // Remove reply
-    console.log(`--- voteOnReply: Reply ${replyId} on thought ${thoughtId} DELETED due to downvotes.`);
-    return Promise.resolve(undefined); // Reply was deleted
+    thought.replies.splice(replyIndex, 1); // Remove reply from array
+    await kv.set(`${THOUGHT_KEY_PREFIX}${thoughtId}`, thought); // Save updated thought
+    console.log(`--- voteOnReply: Reply ${replyId} on thought ${thoughtId} DELETED. Updated thought in KV.`);
+    return undefined;
+  } else {
+    await kv.set(`${THOUGHT_KEY_PREFIX}${thoughtId}`, thought); // Save updated thought
+    console.log(`--- voteOnReply: Updated reply ${replyId} on thought ${thoughtId}. Updated thought in KV.`);
+    return replyToUpdate;
   }
-  return Promise.resolve(replyToUpdate);
 };
 
-// --- Utility for testing (optional) ---
-export const _clearAllThoughts_TEST_ONLY = (): void => {
-  console.log('--- _clearAllThoughts_TEST_ONLY called. Clearing thoughts.');
-  thoughts = [];
+// Utility for testing (CAUTION: DELETES ALL THOUGHT DATA FROM KV)
+export const _clearAllThoughts_TEST_ONLY = async (): Promise<void> => {
+  console.log('--- _clearAllThoughts_TEST_ONLY called. Deleting all thoughts from KV.');
+  const thoughtIds = await kv.smembers(THOUGHTS_LIST_KEY);
+  if (thoughtIds && thoughtIds.length > 0) {
+    const keysToDelete: string[] = thoughtIds.map(id => `${THOUGHT_KEY_PREFIX}${id}`);
+    keysToDelete.push(THOUGHTS_LIST_KEY); // Also delete the list key itself
+    await kv.del(...keysToDelete);
+    console.log(`--- Deleted ${keysToDelete.length} keys from KV.`);
+  } else {
+    console.log('--- No thought IDs found in list, nothing to delete from object store. Ensuring list key is gone.');
+    await kv.del(THOUGHTS_LIST_KEY);
+  }
+  // For good measure, you might also want to ensure the list key itself is deleted if it exists even if empty
+  // await kv.del(THOUGHTS_LIST_KEY);
 };
