@@ -6,8 +6,6 @@
 
 @plugin "daisyui/theme" {
   name: "business";
-  default: true;
-  prefersdark: true;
   color-scheme: "dark";
   --color-base-100: oklch(24.353% 0 0);
   --color-base-200: oklch(22.648% 0 0);
@@ -41,8 +39,6 @@
 
 @plugin "daisyui/theme" {
   name: "bumblebee";
-  default: false;
-  prefersdark: false;
   color-scheme: "light";
   --color-base-100: oklch(100% 0 0);
   --color-base-200: oklch(97% 0 0);
@@ -73,7 +69,5 @@
   --depth: 1;
   --noise: 0;
 }
-
-
 
 
