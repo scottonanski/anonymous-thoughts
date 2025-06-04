@@ -5,9 +5,8 @@ import { themeChange } from 'theme-change';
 
 const ThemeSwitcher = () => {
   useEffect(() => {
-    themeChange(false); // false means we'll manually initialize the theme
+    themeChange(false); 
     
-    // Set initial theme based on system preference or saved preference
     const savedTheme = localStorage.getItem('theme');
     const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     
