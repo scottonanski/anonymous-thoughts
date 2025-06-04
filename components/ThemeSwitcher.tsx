@@ -21,7 +21,7 @@ const ThemeSwitcher = () => {
     <div className="fixed bottom-4 right-4 z-50">
       <button
         className="btn btn-circle btn-ghost"
-        data-set-theme="business"
+        data-set-theme="bumblebee"
         data-act-class="hidden"
         data-toggle-theme="business"
       >
@@ -29,7 +29,7 @@ const ThemeSwitcher = () => {
       </button>
       <button
         className="btn btn-circle btn-ghost hidden"
-        data-set-theme="bumblebee"
+        data-set-theme="business"
         data-act-class="hidden"
         data-toggle-theme="bumblebee"
       >
