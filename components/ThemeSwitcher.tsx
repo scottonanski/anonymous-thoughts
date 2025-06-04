@@ -31,7 +31,7 @@ const ThemeSwitcher = () => {
         className="btn btn-circle btn-ghost hidden"
         data-set-theme="business"
         data-act-class="hidden"
-        data-toggle-theme="lemonade"
+        data-toggle-theme="bumblebee"
       >
         <Moon className="w-5 h-5" />
       </button>
