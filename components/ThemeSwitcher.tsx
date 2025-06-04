@@ -13,7 +13,7 @@ const ThemeSwitcher = () => {
     
     if (!savedTheme) {
       // If no saved preference, use system preference
-      document.documentElement.setAttribute('data-theme', systemPrefersDark ? 'business' : 'lemonade');
+      document.documentElement.setAttribute('data-theme', systemPrefersDark ? 'business' : 'bumblebee');
     }
   }, []);
 
